@@ -21,9 +21,6 @@ public class ServerThread extends Thread{
 	private String clientAddress;
 	private int clientPort;
 	private Fishing fish = new Fishing();
-	
-	
-	
 	String refused = "HTTP/1.1 403 Forbidden\r\n" +
 	          "Content-Type: text/html\r\n" +
 	          "Content-Length: 23\r\n" +
