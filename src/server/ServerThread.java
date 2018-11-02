@@ -2,10 +2,13 @@ package server;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.Set;
 
 
@@ -41,16 +44,27 @@ public class ServerThread extends Thread{
 			clientPort = client.getPort();
 			System.out.println(clientAddress);
 			System.out.println(clientPort);
+			client.setSoTimeout(400);
+			ByteArrayOutputStream CloneResult = new ByteArrayOutputStream();
+			int rlen = 0;
+			int begin = 0;
 			InputStream input = client.getInputStream();
 			if (input == null)
 				return;
-			final int bufsize = 8192;
+			/*final int bufsize = 8192;
 			byte[] buf = new byte[bufsize];
-			int splitbyte = 0;
-			int rlen = 0;
+			int splitbyte = 0;*/
+			/*byte[] buffer = new byte[1024];
+		    int length;
+		    while ((length = input.read(buffer)) != -1) {
+		        CloneResult.write(buffer, 0, length);
+		        rlen+=length;
+		    }*/
+	        rlen = getBack(CloneResult,client);
+			
 			//读入缓冲区的总字节数，到未尾时都返回-1
-			int read = input.read(buf, 0, bufsize);
-			while (read > 0) {
+			//int read = input.read(buf, 0, bufsize);
+			/*while (read > 0) {
 				rlen += read;
 				//\r\n\r\n为结束，避免inputStream阻塞。
 				splitbyte = findHeaderEnd(buf, rlen);
@@ -58,8 +72,8 @@ public class ServerThread extends Thread{
 					break;
 				//
 				read = input.read(buf, rlen, bufsize - rlen);
-			}
-			ByteArrayInputStream stream = new ByteArrayInputStream(buf,0, rlen);
+			}*/
+			ByteArrayInputStream stream = new ByteArrayInputStream(CloneResult.toByteArray());
 			//InputStreamReader将字节流转化为字符流
 			BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
 			String line;
@@ -86,9 +100,15 @@ public class ServerThread extends Thread{
 				String fishAddress = fish.fishing(address);
 				if(fishAddress!=null) {
 					address = fishAddress;
-					port = 80;
+					//port = 80;
 				}
-				sendAndreceive(buf, rlen, client, client.getInputStream(),client.getOutputStream(), address,port);	
+				if(port!=80) {
+					client.getOutputStream().write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes());
+					begin = rlen;
+					rlen = getBack(CloneResult,client);
+				}
+				
+				sendAndreceive(CloneResult.toByteArray(),begin, rlen, client, client.getInputStream(),client.getOutputStream(), address,port);	
 			} catch (Exception e) {
 				System.out.println("Run Exception!");
 				e.printStackTrace();
@@ -96,7 +116,7 @@ public class ServerThread extends Thread{
 		} catch (Exception e) {}
 	}
 	
-	private int findHeaderEnd(final byte[] buf, int rlen) {
+	private int findHeaderEnd(byte[] buf, int rlen) {
 		int splitbyte = 0;
 		while (splitbyte + 3 < rlen) {
 			//遇到换行回车
@@ -108,7 +128,8 @@ public class ServerThread extends Thread{
 		return 0;
 	}
 	
-	void sendAndreceive(byte[] request, int requestLen, Socket client,InputStream clientIS, OutputStream clientOS, String address, int port)throws Exception {
+	
+	void sendAndreceive(byte[] request, int begin, int requestLen, Socket client,InputStream clientIS, OutputStream clientOS, String address, int port)throws Exception {
 		byte bytes[] = new byte[1024 * 32];
 		Socket socket = new Socket(address, port);
 		socket.setSoTimeout(3000);
@@ -128,15 +149,7 @@ public class ServerThread extends Thread{
 					clientOutput.write(refused.getBytes());
 					break;
 				}
-				output.write(request, 0, requestLen);
-				if(port==80) {
-					output.write(request, 0, requestLen);
-					//output.write(content.getBytes());
-				}else {
-					output.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes());
-					output.write(request, 0, requestLen);
-					//output.write(content.getBytes());
-				}
+				output.write(request, begin, requestLen);
 				int resultLen = 0;
 				try {
 					while ((resultLen = input.read(bytes)) != -1
@@ -184,4 +197,25 @@ public class ServerThread extends Thread{
 	public void addfish() {
 		fish.addFishing("www.taobao.com", "jwts.hit.edu.cn");
 	}
+	
+	
+	private int getBack(ByteArrayOutputStream CloneResult,Socket client) {
+		byte[] buffer = new byte[1024];
+		int len = 0;
+        int length = 0;
+        try {
+        	InputStream input = client.getInputStream();
+			while ((length = input.read(buffer)) != -1) {
+			    CloneResult.write(buffer, 0, length);
+			    len += length;
+			}
+		}catch(SocketTimeoutException e) {
+			return len;
+		}catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return len;
+	}
+	
 }
