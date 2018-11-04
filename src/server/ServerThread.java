@@ -13,7 +13,6 @@ import java.util.Set;
 
 
 public class ServerThread extends Thread{
-	private Socket server;
 	private Socket client;
 	private String host;
 	private String address;
@@ -90,18 +89,6 @@ public class ServerThread extends Thread{
 				e.printStackTrace();
 			}
 		} catch (Exception e) {}
-	}
-	
-	private int findHeaderEnd(byte[] buf, int rlen) {
-		int splitbyte = 0;
-		while (splitbyte + 3 < rlen) {
-			//遇到换行回车
-			if (buf[splitbyte] == '\r' && buf[splitbyte + 1] == '\n'
-					&& buf[splitbyte + 2] == '\r'&& buf[splitbyte + 3] == '\n')
-				return splitbyte + 4;
-			splitbyte++;
-		}
-		return 0;
 	}
 	
 	
