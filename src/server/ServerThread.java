@@ -47,32 +47,9 @@ public class ServerThread extends Thread{
 			client.setSoTimeout(400);
 			ByteArrayOutputStream CloneResult = new ByteArrayOutputStream();
 			int rlen = 0;
-			int begin = 0;
 			InputStream input = client.getInputStream();
 			if (input == null)
 				return;
-			/*final int bufsize = 8192;
-			byte[] buf = new byte[bufsize];
-			int splitbyte = 0;*/
-			/*byte[] buffer = new byte[1024];
-		    int length;
-		    while ((length = input.read(buffer)) != -1) {
-		        CloneResult.write(buffer, 0, length);
-		        rlen+=length;
-		    }*/
-	        rlen = getBack(CloneResult,client);
-			
-			//读入缓冲区的总字节数，到未尾时都返回-1
-			//int read = input.read(buf, 0, bufsize);
-			/*while (read > 0) {
-				rlen += read;
-				//\r\n\r\n为结束，避免inputStream阻塞。
-				splitbyte = findHeaderEnd(buf, rlen);
-				if (splitbyte > 0)
-					break;
-				//
-				read = input.read(buf, rlen, bufsize - rlen);
-			}*/
 			ByteArrayInputStream stream = new ByteArrayInputStream(CloneResult.toByteArray());
 			//InputStreamReader将字节流转化为字符流
 			BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
@@ -104,11 +81,10 @@ public class ServerThread extends Thread{
 				}
 				if(port!=80) {
 					client.getOutputStream().write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes());
-					begin = rlen;
+					CloneResult = new ByteArrayOutputStream();
 					rlen = getBack(CloneResult,client);
 				}
-				
-				sendAndreceive(CloneResult.toByteArray(),begin, rlen, client, client.getInputStream(),client.getOutputStream(), address,port);	
+				sendAndreceive(CloneResult.toByteArray(),rlen, client, client.getInputStream(),client.getOutputStream(), address,port);	
 			} catch (Exception e) {
 				System.out.println("Run Exception!");
 				e.printStackTrace();
@@ -129,7 +105,7 @@ public class ServerThread extends Thread{
 	}
 	
 	
-	void sendAndreceive(byte[] request, int begin, int requestLen, Socket client,InputStream clientIS, OutputStream clientOS, String address, int port)throws Exception {
+	void sendAndreceive(byte[] request, int requestLen, Socket client,InputStream clientIS, OutputStream clientOS, String address, int port)throws Exception {
 		byte bytes[] = new byte[1024 * 32];
 		Socket socket = new Socket(address, port);
 		socket.setSoTimeout(3000);
@@ -149,7 +125,7 @@ public class ServerThread extends Thread{
 					clientOutput.write(refused.getBytes());
 					break;
 				}
-				output.write(request, begin, requestLen);
+				output.write(request, 0, requestLen);
 				int resultLen = 0;
 				try {
 					while ((resultLen = input.read(bytes)) != -1
