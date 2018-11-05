@@ -38,25 +38,28 @@ public class ServerThread extends Thread{
 	public void run() {
 		try {
 			addfish();
-			//»ñÈ¡clientÊäÈëÁ÷£¬´Ó¶ø»ñÈ¡¿Í»§¶ËÇëÇó
+			//è·å–clientè¾“å…¥æµï¼Œä»è€Œè·å–å®¢æˆ·ç«¯è¯·æ±‚
 			clientAddress = client.getLocalAddress().getHostAddress();
 			clientPort = client.getPort();
 			System.out.println(clientAddress);
 			System.out.println(clientPort);
 			client.setSoTimeout(400);
 			ByteArrayOutputStream CloneResult = new ByteArrayOutputStream();
-			int rlen = 0;
+			int rlen = 0; 
 			InputStream input = client.getInputStream();
 			if (input == null)
 				return;
+			rlen = getBack(CloneResult,client);
+			System.out.println(new String(CloneResult.toByteArray()));
 			ByteArrayInputStream stream = new ByteArrayInputStream(CloneResult.toByteArray());
-			//InputStreamReader½«×Ö½ÚÁ÷×ª»¯Îª×Ö·ûÁ÷
+			//InputStreamReaderå°†å­—èŠ‚æµè½¬åŒ–ä¸ºå­—ç¬¦æµ
 			BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
 			String line;
 			boolean flag = false;
-			//ĞĞ¶ÁÈ¡¿Í»§¶ËÊı¾İ
+			//è¡Œè¯»å–å®¢æˆ·ç«¯æ•°æ®
 			while ((line = reader.readLine()) != null) {
-				//°ÑURL×Ö·û´®ÀïµÄ×Ö·û±ä³ÉĞ¡Ğ´µÄ£¬ÕâÑùÔÚÅĞ¶ÏÊÇ²»ÊÇÒÔ"host:"¿ªÍ·
+				System.out.println(line);
+				//æŠŠURLå­—ç¬¦ä¸²é‡Œçš„å­—ç¬¦å˜æˆå°å†™çš„ï¼Œè¿™æ ·åœ¨åˆ¤æ–­æ˜¯ä¸æ˜¯ä»¥"host:"å¼€å¤´
 				if (line.toLowerCase().startsWith("host:")) {
 						host = line;
 						flag = true;
@@ -64,15 +67,30 @@ public class ServerThread extends Thread{
 				System.out.println(host);
 			}
 			if (!flag) {
+					
 					client.getOutputStream().write("error!".getBytes());
 					client.close();
 					return;
 			}
-			//¸ù¾İhost·ÖÀë³öaddressºÍport
+			//æ ¹æ®hoståˆ†ç¦»å‡ºaddresså’Œport
 			addressAndport();
+			//å¦‚æœè¯¥åœ°å€åœ¨é»‘åå•ä¸­ï¼Œç¦æ­¢è®¿é—®
+			if(addressBlacklist.contains(address)){
+				System.out.println("---->>>" + address + " is in blacklist");
+				OutputStream clientOutput = client.getOutputStream();
+				clientOutput.write(refused.getBytes());
+				return;
+			}
+			//å¦‚æœè¯¥å®¢æˆ·åœ¨é»‘åå•ä¸­ï¼Œä¹Ÿç¦æ­¢è®¿é—®
+			if(userBlacklist.contains(clientAddress)) {
+				System.out.println("---->>>"+clientAddress+" is in blacklist");
+				OutputStream clientOutput = client.getOutputStream();
+				clientOutput.write(refused.getBytes());
+				return ;
+			}
 			System.out.println("address:[" + address + "]port:" + port + "\n-------------------\n");
 			try {
-				//´´½¨Óëaddress¡¢portÁ¬½ÓµÄÌ×½Ó×Ö TCPÁ¬½Ó½¨Á¢
+				//åˆ›å»ºä¸addressã€portè¿æ¥çš„å¥—æ¥å­— TCPè¿æ¥å»ºç«‹
 				String fishAddress = fish.fishing(address);
 				if(fishAddress!=null) {
 					address = fishAddress;
@@ -92,29 +110,23 @@ public class ServerThread extends Thread{
 	}
 	
 	
+	//å‘æœåŠ¡å™¨å‘é€è¯·æ±‚å¹¶å°†æœåŠ¡å™¨å“åº”è½¬å‘ä¸ªå®¢æˆ·ç«¯
 	void sendAndreceive(byte[] request, int requestLen, Socket client,InputStream clientIS, OutputStream clientOS, String address, int port)throws Exception {
 		byte bytes[] = new byte[1024 * 32];
+		//ä¸æœåŠ¡å™¨å»ºç«‹è¿æ¥
 		Socket socket = new Socket(address, port);
+		//è®¾ç½®socketè¶…æ—¶æ—¶é—´ï¼Œé˜²æ­¢ä¸€ç›´è¯»å–
 		socket.setSoTimeout(3000);
+		//æ‰“å¼€è¾“å…¥è¾“å‡ºæµ
 		OutputStream output = socket.getOutputStream();
 		InputStream input = socket.getInputStream();
 		try {
 			do {
-				if(addressBlacklist.contains(address)){
-					System.out.println("---->>>" + address + " is in blacklist");
-					OutputStream clientOutput = client.getOutputStream();
-					clientOutput.write(refused.getBytes());
-					break;
-				}
-				if(userBlacklist.contains(clientAddress)) {
-					System.out.println("---->>>"+clientAddress+" is in blacklist");
-					OutputStream clientOutput = client.getOutputStream();
-					clientOutput.write(refused.getBytes());
-					break;
-				}
+				//å‘æœåŠ¡å™¨å‘é€è¯·æ±‚
 				output.write(request, 0, requestLen);
 				int resultLen = 0;
 				try {
+					//è½¬å‘æœåŠ¡å™¨å“åº”æ¶ˆæ¯ç»™å®¢æˆ·ç«¯
 					while ((resultLen = input.read(bytes)) != -1
 							&& !client.isClosed() && !socket.isClosed()) {
 						clientOS.write(bytes, 0, resultLen);
