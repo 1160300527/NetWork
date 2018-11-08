@@ -4,7 +4,9 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -46,7 +48,7 @@ public class Client{
 	private int receiveWin = 20;
 	
 	//序列号最大数maxSeq>=sendWin+receiveWin
-	private int maxSeq = 50;
+	private int maxSeq = 60;
 	
 	
 	//发送窗口起始
@@ -151,9 +153,8 @@ public class Client{
 			sendBuf.put(seq, data);
 			clock.setClock(seq, restTime);
 		}
-		if(seq>0&&send.length!=1) {
-			if(Math.random()>0.5)
-				return;
+		if(seq%3==0&&send.length>1) {
+			return;
 		}
 		try {
 			socket.send(data);
@@ -170,11 +171,11 @@ public class Client{
 	 * @param targetPort		目的端口号
 	 */
 	@SuppressWarnings("deprecation")
-	public void sendTo(String content,InetAddress targetAddress,int targetPort) {
+	public void sendTo(byte content[],InetAddress targetAddress,int targetPort) {
 		int start = 0;
 		//打开定时器
 		clock.start();
-		while((start =send(content.getBytes(),-1,targetAddress,targetPort,start,content.length()))>=0||!sendBuf.isEmpty()) {
+		while((start =send(content,-1,targetAddress,targetPort,start,content.length))>=0||!sendBuf.isEmpty()) {
 			//接收ACK数据报并从数据报中获取ACK值
 			getInfo(receive(100));
 		}
@@ -216,22 +217,21 @@ public class Client{
 	 * @param filepath	文件路径
 	 * @return			文件内容
 	 */
-	public String getContent(String filepath) {
+	public byte[] getContent(String filepath) {
 		File file = new File(filepath);
-		String Content = "";
+		byte content[]=new byte[(int) file.length()];
 		try {
-			BufferedReader reader = new BufferedReader(new FileReader(file));
-			int length = (int)file.length();
-			char content[] = new char[length];
-			reader.read(content, 0, length);
-			Content = new String(content);
-			reader.close();
-		} catch (FileNotFoundException e) {
-			System.out.println("Don't find the file you want to send");
-		} catch( IOException e) {
-			
+			FileInputStream input = new FileInputStream(file);
+			input.read(content);
+			input.close();
+		} catch (FileNotFoundException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
-		return Content;
+		return content;
 	}
 	
 	
@@ -244,7 +244,7 @@ public class Client{
 	public void startSend(InetAddress sendAddress,int port,String filepath) {
 		InetAddress targetAddress = sendAddress;
 		int targetPort = port;
-		String content = getContent(filepath);
+		byte content[] = getContent(filepath);
 		System.out.println("开始发送文件："+filepath);
 		sendTo(content,targetAddress,targetPort);
 	}
@@ -389,11 +389,15 @@ public class Client{
 	public void writeFile(String filepath) {
 		File file = new File(filepath);
 		try {
-			BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-			writer.write(new String(receive.toByteArray()));
-			writer.close();
+			FileOutputStream output = new FileOutputStream(file);
+			output.write(receive.toByteArray(), 0, receive.size());
+			output.close();
+		} catch (FileNotFoundException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
 		} catch (IOException e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
-		} 
+		}
 	}
 }
