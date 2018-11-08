@@ -1,14 +1,10 @@
 package SR;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -44,12 +40,12 @@ public class Client{
 	
 	//发送窗口大小
 	private int sendWin = 20;
+	
 	//接收窗口大小
 	private int receiveWin = 20;
 	
 	//序列号最大数maxSeq>=sendWin+receiveWin
-	private int maxSeq = 60;
-	
+	private int maxSeq = 40;
 	
 	//发送窗口起始
 	private int sendBase = 0;
@@ -153,8 +149,11 @@ public class Client{
 			sendBuf.put(seq, data);
 			clock.setClock(seq, restTime);
 		}
-		if(seq%3==0&&send.length>1) {
-			return;
+		
+		//非结束标志报文，均有可能丢失
+		if(seq>=0) {
+			if(Math.random()>0.6)
+				return;
 		}
 		try {
 			socket.send(data);
@@ -337,10 +336,12 @@ public class Client{
 				return true;
 			}
 			ackOutOfOrder.add(seq);
+			System.err.println(ackOutOfOrder);
 			System.out.println("接受ACK:"+seq);
 			sendBuf.remove(seq);
 			clock.deleteClock(seq);
 			if(seq == sendBase) {
+				System.err.println(ackOutOfOrder);
 				ackOutOfOrder.remove(seq);
 				sendBase = (sendBase+1)%maxSeq;
 				System.out.println("SendBase加1,现为"+sendBase);
@@ -350,8 +351,17 @@ public class Client{
 					sendBase = (sendBase+1)%maxSeq;
 					System.out.println("SendBase加1,现为"+sendBase);
 				}
+				System.err.println(ackOutOfOrder);
+				System.err.println(sendBase);
 			}
 		}else {
+			if((seq<receiveBase&&seq+receiveWin>=receiveBase)||
+				((seq>receiveBase)&&(seq<receiveBase+receiveWin)&&(receiveBuf.containsKey(seq)))||
+				(receiveBase+maxSeq<=seq+receiveWin)) {
+				System.err.println("收到重复报文："+seq);
+				send(new byte[0],seq,sendAddress,sendPort,0,0);
+				return false;
+			}
 			if(seq==receiveBase) {
 				System.out.println("Seq:"+seq+" 等于receiveBase，按序到达，成功接收");
 				receive.write(receiveData, 1, length-1);
@@ -362,7 +372,6 @@ public class Client{
 					System.out.println("Seq:"+receiveBase+" 已接收,从缓存中取出数据报进行组装,receiveBase增加1");
 					DatagramPacket Data = receiveBuf.remove(receiveBase);
 					receive.write(Data.getData(),1,Data.getLength()-1);
-					send(new byte[0],receiveBase,sendAddress,sendPort,0,0);
 					receiveBase = (receiveBase+1)%maxSeq;
 					System.out.println("ReceiveBase="+receiveBase);
 				}
@@ -375,7 +384,7 @@ public class Client{
 				send(new byte[0],seq,sendAddress,sendPort,0,0);
 			}
 			else {
-				System.err.println("超出接收窗口，丢弃");
+				System.err.println(seq+"超出接收窗口，丢弃");
 			}
 		}
 		return false;
