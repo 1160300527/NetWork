@@ -23,24 +23,30 @@ import java.util.Set;
 public class Client{
 	//发送端缓存
 	private Map<Integer,DatagramPacket> sendBuf = new HashMap<>();
+	
 	//接收端缓存
 	private Map<Integer,DatagramPacket> receiveBuf = new HashMap<>();
-	//乱序到达的ACK
+	
+	//保存乱序到达的ACK
 	private Set<Integer> ackOutOfOrder = new HashSet<>();
 	
+	//接收的内容（有序）
 	private ByteArrayOutputStream receive=new ByteArrayOutputStream();
 	
+	//本机socket
 	private DatagramSocket socket;	
+	//本机地址
 	private InetAddress address = null;
+	//socket绑定的端口号
 	private int port;
 	
 	//发送窗口大小
-	private int sendWin = 10;
+	private int sendWin = 20;
 	//接收窗口大小
-	private int receiveWin = 10;
+	private int receiveWin = 20;
 	
 	//序列号最大数maxSeq>=sendWin+receiveWin
-	private int maxSeq = 20;
+	private int maxSeq = 50;
 	
 	
 	//发送窗口起始
@@ -49,11 +55,13 @@ public class Client{
 	//接收口起始
 	private int receiveBase = 0;
 	
+	//每个分组包含的最大数据字节数
 	private int maxData = 1200;
 	
 	//发送窗口下一个序列号
 	private int sendNext = 0;
 	
+	//计时器
 	private Time clock= new Time(this);
 	
 	//过期时间
@@ -95,13 +103,14 @@ public class Client{
 			}
 			return 0;
 		}
+		if(start<0) {
+			return -1;
+		}
+		//若发送窗口未满，则可以继续发送
 		while(((sendNext<sendBase)&&((sendBase+sendWin)%maxSeq>sendNext))||
 			   ((sendNext>sendBase)&&(sendBase+sendWin>sendNext))||
 			   (sendNext==sendBase)) {
 			try {
-				if(start<0) {
-					return -1;
-				}
 				ByteArrayOutputStream Send = new ByteArrayOutputStream();
 				seq = sendNext;
 				sendNext = (sendNext+1)%maxSeq;
@@ -142,8 +151,10 @@ public class Client{
 			sendBuf.put(seq, data);
 			clock.setClock(seq, restTime);
 		}
-		if(seq%3==0&&send.length!=1)
-			return;
+		if(seq>0&&send.length!=1) {
+			if(Math.random()>0.5)
+				return;
+		}
 		try {
 			socket.send(data);
 		} catch (IOException e) {
@@ -331,13 +342,11 @@ public class Client{
 			clock.deleteClock(seq);
 			if(seq == sendBase) {
 				ackOutOfOrder.remove(seq);
-				//sendBase++;
 				sendBase = (sendBase+1)%maxSeq;
 				System.out.println("SendBase加1,现为"+sendBase);
 				//如果Seq=sendBase的数据包曾收到过ACK，则窗口移动
 				while(ackOutOfOrder.contains(sendBase)) {
 					ackOutOfOrder.remove(sendBase);
-					//sendBase++;
 					sendBase = (sendBase+1)%maxSeq;
 					System.out.println("SendBase加1,现为"+sendBase);
 				}
