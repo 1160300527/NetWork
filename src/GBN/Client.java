@@ -1,4 +1,4 @@
-package SR;
+package GBN;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -22,12 +22,6 @@ public class Client{
 	//发送端缓存
 	private Map<Integer,DatagramPacket> sendBuf = new HashMap<>();
 	
-	//接收端缓存
-	private Map<Integer,DatagramPacket> receiveBuf = new HashMap<>();
-	
-	//保存乱序到达的ACK
-	private Set<Integer> ackOutOfOrder = new HashSet<>();
-	
 	//接收的内容（有序）
 	private ByteArrayOutputStream receive=new ByteArrayOutputStream();
 	
@@ -41,17 +35,12 @@ public class Client{
 	//发送窗口大小
 	private int sendWin = 20;
 	
-	//接收窗口大小
-	private int receiveWin = 20;
-	
 	//序列号最大数maxSeq>=sendWin+receiveWin
 	private int maxSeq = 40;
 	
 	//发送窗口起始
 	private int sendBase = 0;
-	
-	//接收口起始
-	private int receiveBase = 0;
+	private int expectReceive = 0;
 	
 	//每个分组包含的最大数据字节数
 	private int maxData = 1200;
@@ -147,7 +136,9 @@ public class Client{
 		DatagramPacket data = new DatagramPacket(send,send.length,sendAddress,sendPort);
 		if(send.length>1) {
 			sendBuf.put(seq, data);
-			clock.setClock(seq, restTime);
+			if(seq == sendBase) {
+				clock.begin();
+			}
 		}
 		
 		//非结束标志报文，均有可能丢失
@@ -190,15 +181,19 @@ public class Client{
 	 * 当报文超时时，由定时器调用该方法,重发超时报文
 	 * @param seq	超时的报文seq
 	 */
-	public void timeOut(int seq) {
-		try {
-			//从发送缓存中取出报文并通过socket进行发送
-			socket.send(sendBuf.get(seq));
-			//定时器更新该报文的超时时间
-			clock.setClock(seq, restTime);
-		} catch (IOException e) {
-			e.printStackTrace();
+	public void timeOut() {
+		int seq = sendBase;
+		while(sendBuf.containsKey(seq)) {
+			try {
+				socket.send(sendBuf.get(seq));
+				System.err.println("重传："+seq+" 号报文");
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			seq++;
 		}
+		clock.begin();
 	}
 	
 	
@@ -336,56 +331,36 @@ public class Client{
 			if(seq==-1) {
 				return true;
 			}
-			ackOutOfOrder.add(seq);
-			System.err.println(ackOutOfOrder);
-			System.out.println("接受ACK:"+seq);
-			sendBuf.remove(seq);
-			clock.deleteClock(seq);
+			System.out.println("报文："+seq+" 已经正确接收");
+			if((sendBase<seq&&sendBase+sendWin>seq)||(((sendBase+sendWin)%maxSeq>seq)&&(sendBase<seq))){
+				while(sendBase<seq&&sendBase+sendWin>seq) {
+					sendBuf.remove(sendBase);
+					sendBase = (sendBase+1)%maxSeq;
+				}
+			}
 			if(seq == sendBase) {
-				System.err.println(ackOutOfOrder);
-				ackOutOfOrder.remove(seq);
+				System.out.println("报文："+seq+" 已经正确接收");
+				sendBuf.remove(seq);
 				sendBase = (sendBase+1)%maxSeq;
 				System.out.println("SendBase加1,现为"+sendBase);
-				//如果Seq=sendBase的数据包曾收到过ACK，则窗口移动
-				while(ackOutOfOrder.contains(sendBase)) {
-					ackOutOfOrder.remove(sendBase);
-					sendBase = (sendBase+1)%maxSeq;
-					System.out.println("SendBase加1,现为"+sendBase);
+				if(sendBase == sendNext) {
+					clock.Stop();
 				}
-				System.err.println("乱序到达ACK有："+ackOutOfOrder);
-				System.err.println(ackOutOfOrder);
+				else {
+					clock.begin();
+				}
 			}
 		}else {
-			if((seq<receiveBase&&seq+receiveWin>=receiveBase)||
-				((seq>receiveBase)&&(seq<receiveBase+receiveWin)&&(receiveBuf.containsKey(seq)))||
-				(receiveBase+maxSeq<=seq+receiveWin)) {
-				System.err.println("收到重复报文："+seq);
-				send(new byte[0],seq,sendAddress,sendPort,0,0);
-				return false;
-			}
-			if(seq==receiveBase) {
+			if(seq==expectReceive) {
 				System.out.println("Seq:"+seq+" 等于receiveBase，按序到达，成功接收");
 				receive.write(receiveData, 1, length-1);
-				send(new byte[0],receiveBase,sendAddress,sendPort,0,0);
-				receiveBase = (receiveBase+1)%maxSeq;
-				System.out.println("ReceiveBase="+receiveBase);
-				while(receiveBuf.containsKey(receiveBase)) {
-					System.out.println("Seq:"+receiveBase+" 已接收,从缓存中取出数据报进行组装,receiveBase增加1");
-					DatagramPacket Data = receiveBuf.remove(receiveBase);
-					receive.write(Data.getData(),1,Data.getLength()-1);
-					receiveBase = (receiveBase+1)%maxSeq;
-					System.out.println("ReceiveBase="+receiveBase);
-				}
-			}
-			else if(((seq<receiveBase)&&(receiveBase+receiveWin)%maxSeq>seq)||
-					((seq>receiveBase)&&(receiveBase+receiveWin)>seq)){
-				System.err.println("Seq:"+seq+" 在接收窗口内，乱序到达，进入接收缓存");
-				System.out.println("ReceiveBase="+receiveBase);
-				receiveBuf.put(seq, data);
-				send(new byte[0],seq,sendAddress,sendPort,0,0);
+				send(new byte[0],expectReceive,sendAddress,sendPort,0,0);
+				expectReceive = (expectReceive+1)%maxSeq;
+				System.out.println("expectReceive="+expectReceive);
 			}
 			else {
-				System.err.println(seq+"超出接收窗口，丢弃");
+				send(new byte[0],expectReceive-1,sendAddress,sendPort,0,0);
+				System.err.println(seq+"不为expectReceive,丢弃");
 			}
 		}
 		return false;
